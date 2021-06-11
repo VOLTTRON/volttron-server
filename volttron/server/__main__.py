@@ -4,7 +4,10 @@ import pkgutil
 import sys
 from pathlib import Path
 
-# Each service that we are going to startup is in this namespace
+from volttron.router import green
+"""
+All services that are to be imported will be within the volttron.services namespace
+"""
 import volttron.services
 
 logging.basicConfig(level=logging.DEBUG)
