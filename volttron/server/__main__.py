@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 
 from volttron.router import green
+
 """
 All services that are to be imported will be within the volttron.services namespace
 """
@@ -44,8 +45,7 @@ a dictionary 'package' -> module.
 """
 discovered_plugins = {
     name: importlib.import_module(name)
-    for finder, name, ispkg
-    in iter_namespace(volttron.services)
+    for finder, name, ispkg in iter_namespace(volttron.services)
 }
 
 
@@ -57,14 +57,9 @@ that should always be available in the system.  VOLTTRON requires that
 the services be started in a specific order for its processing to work as
 intended.
 """
-plugin_startup_order = [
-    'volttron.services.config_store',
-    'volttron.services.auth'
-]
+plugin_startup_order = ["volttron.services.config_store", "volttron.services.auth"]
 
-plugin_disabled = [
-    'volttron.services.health'
-]
+plugin_disabled = ["volttron.services.health"]
 
 for p in plugin_startup_order:
     if p not in discovered_plugins:
@@ -80,6 +75,6 @@ for p, v in discovered_plugins.items():
 #
 #     print(p)
 #     print(v)
-#from volttron.utils import get_random_key
+# from volttron.utils import get_random_key
 
-#print(get_random_key())
+# print(get_random_key())
