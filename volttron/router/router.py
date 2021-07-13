@@ -1,409 +1,350 @@
-# -*- coding: utf-8 -*- {{{
-# vim: set fenc=utf-8 ft=python sw=4 ts=4 sts=4 et:
-#
-# Copyright 2020, Battelle Memorial Institute.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
-# This material was prepared as an account of work sponsored by an agency of
-# the United States Government. Neither the United States Government nor the
-# United States Department of Energy, nor Battelle, nor any of their
-# employees, nor any jurisdiction or organization that has cooperated in the
-# development of these materials, makes any warranty, express or
-# implied, or assumes any legal liability or responsibility for the accuracy,
-# completeness, or usefulness or any information, apparatus, product,
-# software, or process disclosed, or represents that its use would not infringe
-# privately owned rights. Reference herein to any specific commercial product,
-# process, or service by trade name, trademark, manufacturer, or otherwise
-# does not necessarily constitute or imply its endorsement, recommendation, or
-# favoring by the United States Government or any agency thereof, or
-# Battelle Memorial Institute. The views and opinions of authors expressed
-# herein do not necessarily state or reflect those of the
-# United States Government or any agency thereof.
-#
-# PACIFIC NORTHWEST NATIONAL LABORATORY operated by
-# BATTELLE for the UNITED STATES DEPARTMENT OF ENERGY
-# under Contract DE-AC05-76RL01830
-# }}}
-
-
-import os
 import logging
+import os
+import sys
 from typing import Optional
+from urllib.parse import urlparse
+import uuid
 
 import zmq
-from zmq import Frame, NOBLOCK, ZMQError, EINVAL, EHOSTUNREACH
+from zmq import ZMQError, NOBLOCK
 
+from volttron.utils import jsonapi, serialize_frames, deserialize_frames
+from volttron.utils.logging import FramesFormatter
+from volttron.utils.socket import Address
+from volttron.utils.keystore import KeyStore
 from volttron.client.vip.servicepeer import ServicePeerNotifier
-from volttron.utils.frame_serialization import serialize_frames
 
-__all__ = ["BaseRouter", "OUTGOING", "INCOMING", "UNROUTABLE", "ERROR"]
+from .base_router import BaseRouter, UNROUTABLE, ERROR, INCOMING
 
-OUTGOING = 0
-INCOMING = 1
-UNROUTABLE = 2
-ERROR = 3
+from ..services.external import ExternalRPCService
+from ..services.peer import ServicePeerNotifier
+from ..services.routing import RoutingService
+from ..services.pubsub import PubSubService
+from ..server.monitor import Monitor
+
+from ..server import __version__
 
 _log = logging.getLogger(__name__)
 
-# Optimizing by pre-creating frames
-_ROUTE_ERRORS = {
-    errnum: (
-        zmq.Frame(str(errnum).encode("ascii")),
-        zmq.Frame(os.strerror(errnum).encode("ascii")),
-    )
-    for errnum in [zmq.EHOSTUNREACH, zmq.EAGAIN]
-}
-_INVALID_SUBSYSTEM = (
-    zmq.Frame(str(zmq.EPROTONOSUPPORT).encode("ascii")),
-    zmq.Frame(os.strerror(zmq.EPROTONOSUPPORT).encode("ascii")),
-)
 
-
-class BaseRouter(object):
-    """Abstract base class of VIP router implementation.
-
-    Router implementers should inherit this class and implement the
-    setup() method to bind to appropriate addresses, set identities,
-    setup authentication, etc, etc. The socket will be created by the
-    start() method, which will then call the setup() method.  Once
-    started, the socket may be polled for incoming messages and those
-    messages are handled/routed by calling the route() method.  During
-    routing, the issue() method, which may be implemented, will be
-    called to allow for debugging and logging. Custom subsystems may be
-    implemented in the handle_subsystem() method. The socket will be
-    closed when the stop() method is called.
-    """
-
-    _context_class = zmq.Context
-    _socket_class = zmq.Socket
-    _poller_class = zmq.Poller
+class Router(BaseRouter):
+    """Concrete VIP router."""
 
     def __init__(
         self,
+        local_address,
+        addresses=(),
         context=None,
+        secretkey=None,
+        publickey=None,
         default_user_id=None,
+        monitor=False,
+        tracker=None,
+        volttron_central_address=None,
+        instance_name=None,
+        bind_web_address=None,
+        volttron_central_serverkey=None,
+        protected_topics={},
+        external_address_file="",
+        msgdebug=None,
+        agent_monitor_frequency=600,
         service_notifier=Optional[ServicePeerNotifier],
     ):
-        """Initialize the object instance.
 
-        If context is None (the default), the zmq global context will be
-        used for socket creation.
-        """
-        self.context = context or self._context_class.instance()
-        self.default_user_id = default_user_id
-        self.socket = None
-        self._peers = set()
-        self._poller = self._poller_class()
-        self._ext_sockets = []
-        self._socket_id_mapping = {}
-        self._service_notifier = service_notifier
-
-    def run(self):
-        """Main router loop."""
-        self.start()
-        try:
-            while True:
-                self.poll_sockets()
-        finally:
-            self.stop()
-
-    def start(self):
-        """Create the socket and call setup().
-
-        The socket is save in the socket attribute. The setup() method
-        is called at the end of the method to perform additional setup.
-        """
-        self.socket = sock = self._socket_class(self.context, zmq.ROUTER)
-        sock.router_mandatory = True
-        sock.sndtimeo = 0
-        sock.tcp_keepalive = True
-        sock.tcp_keepalive_idle = 180
-        sock.tcp_keepalive_intvl = 20
-        sock.tcp_keepalive_cnt = 6
-        self.context.set(zmq.MAX_SOCKETS, 30690)
-        sock.set_hwm(6000)
-        _log.debug(
-            "ROUTER SENDBUF: {0}, {1}".format(
-                sock.getsockopt(zmq.SNDBUF), sock.getsockopt(zmq.RCVBUF)
-            )
+        super(Router, self).__init__(
+            context=context,
+            default_user_id=default_user_id,
+            service_notifier=service_notifier,
         )
-        self.setup()
+        self.local_address = Address(local_address)
+        self._addr = addresses
+        self.addresses = addresses = [Address(addr) for addr in set(addresses)]
+        self._secretkey = secretkey
+        self._publickey = publickey
+        self.logger = logging.getLogger("vip.router")
+        if self.logger.level == logging.NOTSET:
+            self.logger.setLevel(logging.WARNING)
+        self._monitor = monitor
+        self._tracker = tracker
+        self._volttron_central_address = volttron_central_address
+        if self._volttron_central_address:
+            parsed = urlparse(self._volttron_central_address)
 
-    def stop(self, linger=1):
-        """Close the socket."""
-        self.socket.close(linger)
+            assert parsed.scheme in (
+                "http",
+                "https",
+                "tcp",
+                "amqp",
+            ), "volttron central address must begin with http(s) or tcp found"
+            if parsed.scheme == "tcp":
+                assert (
+                    volttron_central_serverkey
+                ), "volttron central serverkey must be set if address is tcp."
+        self._volttron_central_serverkey = volttron_central_serverkey
+        self._instance_name = instance_name
+        self._bind_web_address = bind_web_address
+        self._protected_topics = protected_topics
+        self._external_address_file = external_address_file
+        self._pubsub = None
+        self.ext_rpc = None
+        self._msgdebug = msgdebug
+        self._message_debugger_socket = None
+        self._instance_name = instance_name
+        self._agent_monitor_frequency = agent_monitor_frequency
 
     def setup(self):
-        """Called from start() method to setup the socket.
+        sock = self.socket
+        identity = str(uuid.uuid4())
+        sock.identity = identity.encode("utf-8")
+        _log.debug("ROUTER SOCK identity: {}".format(sock.identity))
+        if self._monitor:
+            Monitor(sock.get_monitor_socket()).start()
+        sock.bind("inproc://vip")
+        _log.debug("In-process VIP router bound to inproc://vip")
+        sock.zap_domain = b"vip"
+        addr = self.local_address
+        if not addr.identity:
+            addr.identity = identity
+        if not addr.domain:
+            addr.domain = "vip"
 
-        Implement this method to bind the socket, set identities and
-        options, etc.
-        """
-        raise NotImplementedError()
+        addr.server = "CURVE"
+        addr.secretkey = self._secretkey
 
-    def poll_sockets(self):
-        """Called inside run method
+        addr.bind(sock)
+        _log.debug("Local VIP router bound to %s" % addr)
+        for address in self.addresses:
+            if not address.identity:
+                address.identity = identity
+            if (
+                address.secretkey is None
+                and address.server not in ["NULL", "PLAIN"]
+                and self._secretkey
+            ):
+                address.server = "CURVE"
+                address.secretkey = self._secretkey
+            if not address.domain:
+                address.domain = "vip"
+            address.bind(sock)
+            _log.debug("Additional VIP router bound to %s" % address)
+        self._ext_routing = None
 
-        Implement this method to poll for sockets for incoming messages.
-        """
-        raise NotImplementedError()
+        self._ext_routing = RoutingService(
+            self.socket,
+            self.context,
+            self._socket_class,
+            self._poller,
+            self._addr,
+            self._instance_name,
+        )
 
-    @property
-    def poll(self):
-        """Returns the underlying socket's poll method."""
-        return self.socket.poll
-
-    def handle_subsystem(self, frames, user_id):
-        """Handle additional subsystems and provide a response.
-
-        This method does nothing by default and may be implemented by
-        subclasses to provide additional subsystems.
-
-        frames is a list of zmq.Frame objects with the following
-        elements:
-
-          [SENDER, RECIPIENT, PROTOCOL, USER_ID, MSG_ID, SUBSYSTEM, ...]
-
-        The return value should be None, if the subsystem is unknown, an
-        empty list or False (or other False value) if the message was
-        handled but does not require/generate a response, or a list of
-        containing the following elements:
-
-          [RECIPIENT, SENDER, PROTOCOL, USER_ID, MSG_ID, SUBSYSTEM, ...]
-
-        """
-        pass
+        self.pubsub = PubSubService(
+            self.socket, self._protected_topics, self._ext_routing
+        )
+        self.ext_rpc = ExternalRPCService(self.socket, self._ext_routing)
+        self._poller.register(sock, zmq.POLLIN)
+        _log.debug("ZMQ version: {}".format(zmq.zmq_version()))
 
     def issue(self, topic, frames, extra=None):
-        pass
+        log = self.logger.debug
+        formatter = FramesFormatter(frames)
+        if topic == ERROR:
+            errnum, errmsg = extra
+            log("%s (%s): %s", errmsg, errnum, formatter)
+        elif topic == UNROUTABLE:
+            log("unroutable: %s: %s", extra, formatter)
+        else:
+            log("%s: %s", ("incoming" if topic == INCOMING else "outgoing"), formatter)
+        if self._tracker:
+            self._tracker.hit(topic, frames, extra)
+        if self._msgdebug:
+            if not self._message_debugger_socket:
+                # Initialize a ZMQ IPC socket on which to publish all messages to MessageDebuggerAgent.
+                socket_path = os.path.expandvars("$VOLTTRON_HOME/run/messagedebug")
+                socket_path = os.path.expanduser(socket_path)
+                socket_path = (
+                    "ipc://{}".format("@" if sys.platform.startswith("linux") else "")
+                    + socket_path
+                )
+                self._message_debugger_socket = zmq.Context().socket(zmq.PUB)
+                self._message_debugger_socket.connect(socket_path)
+            # Publish the routed message, including the "topic" (status/direction), for use by MessageDebuggerAgent.
+            frame_bytes = [topic]
+            frame_bytes.extend(
+                frames
+            )  # [frame if type(frame) is bytes else frame.bytes for frame in frames])
+            frame_bytes = serialize_frames(frames)
+            # TODO we need to fix the msgdebugger socket if we need it to be connected
+            # frame_bytes = [f.bytes for f in frame_bytes]
+            # self._message_debugger_socket.send_pyobj(frame_bytes)
 
-    if zmq.zmq_version_info() >= (4, 1, 0):
+    # This is currently not being used e.g once fixed we won't use it.
+    # def extract_bytes(self, frame_bytes):
+    #    result = []
+    #    for f in frame_bytes:
+    #        if isinstance(f, list):
+    #            result.extend(self.extract_bytes(f))
+    #        else:
+    #            result.append(f.bytes)
+    #    return result
 
-        def lookup_user_id(self, sender, recipient, auth_token):
-            """Find and return a user identifier.
+    def handle_subsystem(self, frames, user_id):
+        _log.debug(f"Handling subsystem with frames: {frames} user_id: {user_id}")
 
-            Returns the UTF-8 encoded User-Id property from the sender
-            frame or None if the authenticator did not set the User-Id
-            metadata. May be extended to perform additional lookups.
-            """
-            # pylint: disable=unused-argument
-            # A user id might/should be set by the ZAP authenticator
+        subsystem = frames[5]
+        if subsystem == "quit":
+            sender = frames[0]
+            # was if sender == 'control' and user_id == self.default_user_id:
+            # now we serialize frames and if user_id is always the sender and not
+            # recipents.get('User-Id') or default user name
+            if sender == "control":
+                if self._ext_routing:
+                    self._ext_routing.close_external_connections()
+                self.stop()
+                raise KeyboardInterrupt()
+            else:
+                _log.error(f"Sender {sender} not authorized to shutdown platform")
+        elif subsystem == "agentstop":
             try:
-                # _log.debug(f"THE TYPE IS:::::::: {type(recipient)}")
-                # recipient.get('User-Id').encode('utf-8') returns sender !!!
-                return sender
-            except ZMQError as exc:
-                if exc.errno != EINVAL:
-                    raise
-            return self.default_user_id
+                drop = frames[6]
+                self._drop_peer(drop)
+                self._drop_pubsub_peers(drop)
+                if self._service_notifier:
+                    self._service_notifier.peer_dropped(drop)
 
-    else:
+                _log.debug(
+                    "ROUTER received agent stop message. dropping peer: {}".format(drop)
+                )
+            except IndexError:
+                _log.error(
+                    f"agentstop called but unable to determine agent from frames sent {frames}"
+                )
+            return False
+        elif subsystem == "query":
+            try:
+                name = frames[6]
+            except IndexError:
+                value = None
+            else:
+                if name == "addresses":
+                    if self.addresses:
+                        value = [addr.base for addr in self.addresses]
+                    else:
+                        value = [self.local_address.base]
+                elif name == "local_address":
+                    value = self.local_address.base
+                # Allow the agents to know the serverkey.
+                elif name == "serverkey":
+                    keystore = KeyStore()
+                    value = keystore.public
+                elif name == "volttron-central-address":
+                    value = self._volttron_central_address
+                elif name == "volttron-central-serverkey":
+                    value = self._volttron_central_serverkey
+                elif name == "instance-name":
+                    value = self._instance_name
+                elif name == "bind-web-address":
+                    value = self._bind_web_address
+                elif name == "platform-version":
+                    value = __version__
+                elif name == "message-bus":
+                    value = os.environ.get("MESSAGEBUS", "zmq")
+                elif name == "agent-monitor-frequency":
+                    value = self._agent_monitor_frequency
+                else:
+                    value = None
+            frames[6:] = ["", value]
+            frames[3] = ""
 
-        def lookup_user_id(self, sender, recipient, auth_token):
-            """Find and return a user identifier.
-
-            A no-op by default, this method must be overridden to map
-            the sender and auth_token to a user ID. The returned value
-            must be a string or None (if the token was not found).
-            """
-            return self.default_user_id
-
-    def _distribute(self, *parts):
-        drop = set()
-        empty = ""
-        frames = [empty, empty, "VIP1", empty, empty]
-        frames.extend(parts)
-        # _log.debug(f"_distribute {parts}")
-        for peer in self._peers:
-            frames[0] = peer
-            drop.update(self._send(frames))
-        for peer in drop:
-            self._drop_peer(peer)
-            if self._service_notifier:
-                self._service_notifier.peer_dropped(peer)
+            return frames
+        elif subsystem == "pubsub":
+            result = self.pubsub.handle_subsystem(frames, user_id)
+            return result
+        elif subsystem == "routing_table":
+            result = self._ext_routing.handle_subsystem(frames)
+            return result
+        elif subsystem == "external_rpc":
+            result = self.ext_rpc.handle_subsystem(frames)
+            return result
 
     def _drop_pubsub_peers(self, peer):
-        """Drop peers for pubsub subsystem. To be handled by subclasses"""
-        pass
+        self.pubsub.peer_drop(peer)
 
     def _add_pubsub_peers(self, peer):
-        """Add peers for pubsub subsystem. To be handled by subclasses"""
-        pass
+        self.pubsub.peer_add(peer)
 
-    def _add_peer(self, peer):
-        if peer in self._peers:
-            return
-        self._distribute("peerlist", "add", peer)
-        self._peers.add(peer)
-        self._add_pubsub_peers(peer)
-        if self._service_notifier:
-            self._service_notifier.peer_added(peer)
-
-    def _drop_peer(self, peer):
-        try:
-            self._peers.remove(peer)
-        except KeyError:
-            return
-        self._distribute(b"peerlist", b"drop", peer)
-        self._drop_pubsub_peers(peer)
-
-    def route(self, frames):
-        """Route one message and return.
-
-        One message is read from the socket and processed. If the
-        recipient is the router (empty recipient), the standard hello
-        and ping subsystems are handled. Other subsystems are sent to
-        handle_subsystem() for processing. Messages destined for other
-        entities are routed appropriately.
+    def poll_sockets(self):
         """
-        socket = self.socket
-        issue = self.issue
-
-        issue(INCOMING, frames)
-        # _log.debug(f"ROUTER Receiving frames: {frames}")
-        if len(frames) < 6:
-            # Cannot route if there are insufficient frames, such as
-            # might happen with a router probe.
-            if len(frames) == 2 and frames[0] and not frames[1]:
-                issue(UNROUTABLE, frames, "router probe")
-                self._add_peer(frames[0])
-            else:
-                issue(UNROUTABLE, frames, "too few frames")
-            return
-        sender, recipient, proto, auth_token, msg_id = frames[:5]
-        # _log.debug(f"routing {sender}, {recipient}, {proto}, {auth_token}, {msg_id}")
-        if proto != "VIP1":
-            # Peer is not talking a protocol we understand
-            issue(UNROUTABLE, frames, "bad VIP signature")
-            return
-        user_id = self.lookup_user_id(sender, recipient, auth_token)
-        if user_id is None:
-            user_id = ""
-        # _log.debug(f"user_id is {user_id}")
-        self._add_peer(sender)
-        subsystem = frames[5]
-        if not recipient:
-            # Handle requests directed at the router
-            name = subsystem
-            if name == "hello":
-                frames = [
-                    sender,
-                    recipient,
-                    proto,
-                    user_id,
-                    msg_id,
-                    "hello",
-                    "welcome",
-                    "1.0",
-                    socket.identity,
-                    sender,
-                ]
-            elif name == "ping":
-                frames[:7] = [sender, recipient, proto, user_id, msg_id, "ping", "pong"]
-            elif name == "peerlist":
-                try:
-                    op = frames[6]
-                except IndexError:
-                    op = None
-                frames = [sender, recipient, proto, "", msg_id, subsystem]
-                if op == "list":
-                    frames.append("listing")
-                    frames.extend(self._peers)
-                else:
-                    error = ("unknown" if op else "missing") + " operation"
-                    frames.extend(["error", error])
-            elif name == "error":
-                return
-            else:
-                response = self.handle_subsystem(frames, user_id)
-                if response is None:
-                    # Handler does not know of the subsystem
-                    errnum, errmsg = error = _INVALID_SUBSYSTEM
-                    issue(ERROR, frames, error)
-                    frames = [
-                        sender,
-                        recipient,
-                        proto,
-                        "",
-                        msg_id,
-                        "error",
-                        errnum,
-                        errmsg,
-                        "",
-                        subsystem,
-                    ]
-                elif not response:
-                    # Subsystem does not require a response
-                    return
-                else:
-                    frames = response
-        else:
-            # Route all other requests to the recipient
-            frames[:4] = [recipient, sender, proto, user_id]
-        for peer in self._send(frames):
-            self._drop_peer(peer)
-
-    def _send(self, frames):
-        issue = self.issue
-        socket = self.socket
-        drop = []
-        recipient, sender = frames[:2]
-        # Expecting outgoing frames:
-        #   [RECIPIENT, SENDER, PROTO, USER_ID, MSG_ID, SUBSYS, ...]
+        Poll for incoming messages through router socket or other external socket connections
+        """
         try:
-            # Try sending the message to its recipient
-            # This is a zmq socket so we need to serialize it before sending
-            serialized_frames = serialize_frames(frames)
-            socket.send_multipart(serialized_frames, flags=NOBLOCK, copy=False)
-            issue(OUTGOING, serialized_frames)
-        except ZMQError as exc:
+            sockets = dict(self._poller.poll())
+        except ZMQError as ex:
+            _log.error("ZMQ Error while polling: {}".format(ex))
+
+        for sock in sockets:
+            if sock == self.socket:
+                if sockets[sock] == zmq.POLLIN:
+                    frames = sock.recv_multipart(copy=False)
+                    self.route(deserialize_frames(frames))
+            elif sock in self._ext_routing._vip_sockets:
+                if sockets[sock] == zmq.POLLIN:
+                    # _log.debug("From Ext Socket: ")
+                    self.ext_route(sock)
+            elif sock in self._ext_routing._monitor_sockets:
+                self._ext_routing.handle_monitor_event(sock)
+            else:
+                # _log.debug("External ")
+                frames = sock.recv_multipart(copy=False)
+
+    def ext_route(self, socket):
+        """
+        Handler function for message received through external socket connection
+        :param socket: socket affected files: {}
+        :return:
+        """
+        # Expecting incoming frames to follow this VIP format:
+        #   [SENDER, PROTO, USER_ID, MSG_ID, SUBSYS, ...]
+        frames = socket.recv_multipart(copy=False)
+        self.route(deserialize_frames(frames))
+        # for f in frames:
+        #     _log.debug("PUBSUBSERVICE Frames: {}".format(bytes(f)))
+        if len(frames) < 6:
+            return
+
+        sender, proto, user_id, msg_id, subsystem = frames[:5]
+        if proto != "VIP1":
+            return
+
+        # Handle 'EXT_RPC' subsystem messages
+        name = subsystem
+        if name == "external_rpc":
+            # Reframe the frames
+            sender, proto, usr_id, msg_id, subsystem, msg = frames[:6]
+            msg_data = jsonapi.loads(msg)
+            peer = msg_data["to_peer"]
+            # Send to destionation agent/peer
+            # Form new frame for local
+            frames[:9] = [peer, sender, proto, usr_id, msg_id, "external_rpc", msg]
             try:
-                errnum, errmsg = error = _ROUTE_ERRORS[exc.errno]
-            except KeyError:
-                error = None
-            if error is None:
-                raise
-            issue(ERROR, frames, error)
-            if exc.errno == EHOSTUNREACH:
-                drop.append(recipient)
-            if exc.errno != EHOSTUNREACH or sender is not frames[0]:
-                # Only send errors if the sender and recipient differ
-                proto, user_id, msg_id, subsystem = frames[2:6]
-                frames = [
-                    sender,
-                    "",
-                    proto,
-                    user_id,
-                    msg_id,
-                    "error",
-                    errnum,
-                    errmsg,
-                    recipient,
-                    subsystem,
-                ]
-                serialized_frames = serialize_frames(frames)
-                try:
-                    socket.send_multipart(serialized_frames, flags=NOBLOCK, copy=False)
-                    issue(OUTGOING, serialized_frames)
-                except ZMQError as exc:
-                    try:
-                        errnum, errmsg = error = _ROUTE_ERRORS[exc.errno]
-                    except KeyError:
-                        error = None
-                    if error is None:
-                        raise
-                    issue(ERROR, serialized_frames, error)
-                    if exc.errno == EHOSTUNREACH:
-                        drop.append(sender)
-        return drop
+                self.socket.send_multipart(frames, flags=NOBLOCK, copy=False)
+            except ZMQError as ex:
+                _log.debug("ZMQ error: {}".format(ex))
+                pass
+        # Handle 'pubsub' subsystem messages
+        elif name == "pubsub":
+            if frames[1] == "VIP1":
+                recipient = ""
+                frames[:1] = ["", ""]
+                # for f in frames:
+                #     _log.debug("frames: {}".format(bytes(f)))
+            result = self.pubsub.handle_subsystem(frames, user_id)
+            return result
+        # Handle 'routing_table' subsystem messages
+        elif name == "routing_table":
+            # for f in frames:
+            #     _log.debug("frames: {}".format(bytes(f)))
+            if frames[1] == "VIP1":
+                frames[:1] = ["", ""]
+            result = self._ext_routing.handle_subsystem(frames)
+            return result

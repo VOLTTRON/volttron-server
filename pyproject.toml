@@ -1,0 +1,22 @@
+[tool.poetry]
+name = "volttron-server"
+version = "0.1.0"
+description = "Server component for VOLTTRON"
+authors = ["C. Allwardt <craig.allwardt@pnnl.gov>"]
+license = "Apache-2.0"
+packages = [
+    { include = "volttron" }
+]
+
+[tool.poetry.dependencies]
+python = ">=3.6.2,<4"
+volttron-utils = { path="../volttron-utils", develop=true}
+volttron-client = { path="../volttron-client", develop = true}
+wheel = "^0.36.2"
+
+[tool.poetry.dev-dependencies]
+black = "^21.6b0"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
