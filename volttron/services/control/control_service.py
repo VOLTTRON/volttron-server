@@ -548,18 +548,7 @@ class ControlService(BaseAgent):
             shutil.rmtree(tmpdir, ignore_errors=True)
 
 
-def log_to_file(file, level=logging.WARNING, handler_class=logging.StreamHandler):
-    """Direct log output to a file (or something like one)."""
-    handler = handler_class(file)
-    handler.setLevel(level)
-    handler.setFormatter(
-        utils.AgentFormatter(
-            "%(asctime)s %(composite_name)s %(levelname)s: %(message)s"
-        )
-    )
-    root = logging.getLogger()
-    root.setLevel(level)
-    root.addHandler(handler)
+
 
 
 Agent = collections.namedtuple("Agent", "name tag uuid vip_identity agent_user")
@@ -2133,42 +2122,6 @@ def edit_config(opts):
             new_raw_data,
             config_type=config_type,
         )
-
-
-class ControlConnection(object):
-    def __init__(self, address, peer="control"):
-        self.address = address
-        self.peer = peer
-        message_bus = utils.get_messagebus()
-        self._server = BaseAgent(
-            address=self.address,
-            enable_store=False,
-            identity=CONTROL_CONNECTION,
-            message_bus=message_bus,
-            enable_channel=True,
-        )
-        self._greenlet = None
-
-    @property
-    def server(self):
-        if self._greenlet is None:
-            event = gevent.event.Event()
-            self._greenlet = gevent.spawn(self._server.core.run, event)
-            event.wait()
-        return self._server
-
-    def call(self, method, *args, **kwargs):
-        return self.server.vip.rpc.call(self.peer, method, *args, **kwargs).get()
-
-    def call_no_get(self, method, *args, **kwargs):
-        return self.server.vip.rpc.call(self.peer, method, *args, **kwargs)
-
-    def notify(self, method, *args, **kwargs):
-        return self.server.vip.rpc.notify(self.peer, method, *args, **kwargs)
-
-    def kill(self, *args, **kwargs):
-        if self._greenlet is not None:
-            self._greenlet.kill(*args, **kwargs)
 
 
 def priority(value):

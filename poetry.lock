@@ -59,12 +59,15 @@ python-versions = "*"
 pycparser = "*"
 
 [[package]]
-name = "chardet"
-version = "4.0.0"
-description = "Universal encoding detector for Python 2 and 3"
+name = "charset-normalizer"
+version = "2.0.1"
+description = "The Real First Universal Charset Detector. Open, modern and actively maintained alternative to Chardet."
 category = "main"
 optional = false
-python-versions = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*, !=3.4.*"
+python-versions = ">=3.5.0"
+
+[package.extras]
+unicode_backport = ["unicodedata2"]
 
 [[package]]
 name = "click"
@@ -298,21 +301,21 @@ python-versions = "*"
 
 [[package]]
 name = "requests"
-version = "2.25.1"
+version = "2.26.0"
 description = "Python HTTP for Humans."
 category = "main"
 optional = false
-python-versions = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*, !=3.4.*"
+python-versions = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*, !=3.4.*, !=3.5.*"
 
 [package.dependencies]
 certifi = ">=2017.4.17"
-chardet = ">=3.0.2,<5"
-idna = ">=2.5,<3"
+charset-normalizer = {version = ">=2.0.0,<2.1.0", markers = "python_version >= \"3\""}
+idna = {version = ">=2.5,<4", markers = "python_version >= \"3\""}
 urllib3 = ">=1.21.1,<1.27"
 
 [package.extras]
-security = ["pyOpenSSL (>=0.14)", "cryptography (>=1.3.4)"]
 socks = ["PySocks (>=1.5.6,!=1.5.7)", "win-inet-pton"]
+use_chardet_on_py3 = ["chardet (>=3.0.2,<5)"]
 
 [[package]]
 name = "six"
@@ -372,54 +375,45 @@ socks = ["PySocks (>=1.5.6,!=1.5.7,<2.0)"]
 
 [[package]]
 name = "volttron-client"
-version = "0.1.2"
+version = "0.2.0"
 description = "Client for connecting to a volttron server"
 category = "main"
 optional = false
 python-versions = ">=3.6.2,<4"
-develop = true
 
 [package.dependencies]
 dateutils = ">=0.6,<0.7"
 gevent = "20.6.1"
 greenlet = "0.4.16"
-grequests = "^0.6.0"
-idna = "<3,>=2.5"
-importlib-metadata = {version = "^1.0", markers = "python_version < \"3.8\""}
-psutil = "^5.8.0"
+grequests = ">=0.6.0,<0.7.0"
+idna = ">=2.5,<3"
+importlib-metadata = {version = ">=1.0,<2.0", markers = "python_version < \"3.8\""}
+psutil = ">=5.8.0,<6.0.0"
 pytz = ">=2019,<2022"
 PyYAML = ">=5,<6"
-toml = "^0.10.2"
+toml = ">=0.10.2,<0.11.0"
 tzlocal = ">=2,<3"
-volttron-utils = "0.1.3"
-zmq = "^0.0.0"
-
-[package.source]
-type = "directory"
-url = "../volttron-client"
+volttron-utils = ">=0.2.1,<0.3.0"
+zmq = ">=0.0.0,<0.0.1"
 
 [[package]]
 name = "volttron-utils"
-version = "0.1.3"
+version = "0.2.1"
 description = "Utility classes and methods for VOLTTRON"
 category = "main"
 optional = false
 python-versions = ">=3.6.2,<4.0"
-develop = true
 
 [package.dependencies]
 cryptography = "2.3"
-dateutils = "^0.6.12"
+dateutils = ">=0.6.12,<0.7.0"
 gevent = "20.6.1"
 greenlet = "0.4.16"
+psutil = ">=5.8.0,<6.0.0"
 pyOpenSSL = "19.0.0"
-tzlocal = "^2.1"
-watchdog-gevent = "^0.1.1"
-zmq = "^0.0.0"
-
-[package.source]
-type = "directory"
-url = "../volttron-utils"
+tzlocal = ">=2.1,<3.0"
+watchdog-gevent = ">=0.1.1,<0.2.0"
+zmq = ">=0.0.0,<0.0.1"
 
 [[package]]
 name = "watchdog"
@@ -495,7 +489,7 @@ testing = ["coverage (>=5.0.3)", "zope.event", "zope.testing"]
 [metadata]
 lock-version = "1.1"
 python-versions = ">=3.6.2,<4"
-content-hash = "a379d10f7e68ce50aba82c1b332262d51f61167739749d851f6d02c007fd7e08"
+content-hash = "588a30425f839b0185302a78bd79222b17cbcaeac2a2cee41190392443455059"
 
 [metadata.files]
 appdirs = [
@@ -561,9 +555,9 @@ cffi = [
     {file = "cffi-1.14.6-cp39-cp39-win_amd64.whl", hash = "sha256:818014c754cd3dba7229c0f5884396264d51ffb87ec86e927ef0be140bfdb0d2"},
     {file = "cffi-1.14.6.tar.gz", hash = "sha256:c9a875ce9d7fe32887784274dd533c57909b7b1dcadcc128a2ac21331a9765dd"},
 ]
-chardet = [
-    {file = "chardet-4.0.0-py2.py3-none-any.whl", hash = "sha256:f864054d66fd9118f2e67044ac8981a54775ec5b67aed0441892edb553d21da5"},
-    {file = "chardet-4.0.0.tar.gz", hash = "sha256:0d6f53a15db4120f2b08c94f11e7d93d2c911ee118b6b30a04ec3ee8310179fa"},
+charset-normalizer = [
+    {file = "charset-normalizer-2.0.1.tar.gz", hash = "sha256:ad0da505736fc7e716a8da15bf19a985db21ac6415c26b34d2fafd3beb3d927e"},
+    {file = "charset_normalizer-2.0.1-py3-none-any.whl", hash = "sha256:b68b38179052975093d71c1b5361bf64afd80484697c1f27056e50593e695ceb"},
 ]
 click = [
     {file = "click-8.0.1-py3-none-any.whl", hash = "sha256:fba402a4a47334742d782209a7c79bc448911afe1149d07bdabdf480b3e2f4b6"},
@@ -825,8 +819,8 @@ regex = [
     {file = "regex-2021.7.6.tar.gz", hash = "sha256:8394e266005f2d8c6f0bc6780001f7afa3ef81a7a2111fa35058ded6fce79e4d"},
 ]
 requests = [
-    {file = "requests-2.25.1-py2.py3-none-any.whl", hash = "sha256:c210084e36a42ae6b9219e00e48287def368a26d03a048ddad7bfee44f75871e"},
-    {file = "requests-2.25.1.tar.gz", hash = "sha256:27973dd4a904a4f13b263a19c866c13b92a39ed1c964655f025f3f8d3d75b804"},
+    {file = "requests-2.26.0-py2.py3-none-any.whl", hash = "sha256:6c1246513ecd5ecd4528a0906f910e8f0f9c6b8ec72030dc9fd154dc1a6efd24"},
+    {file = "requests-2.26.0.tar.gz", hash = "sha256:b8aa58f8cf793ffd8782d3d8cb19e66ef36f7aba4353eec859e74678b01b07a7"},
 ]
 six = [
     {file = "six-1.16.0-py2.py3-none-any.whl", hash = "sha256:8abb2f1d86890a2dfb989f9a77cfcfd3e47c2a354b01111771326f8aa26e0254"},
@@ -881,8 +875,14 @@ urllib3 = [
     {file = "urllib3-1.26.6-py2.py3-none-any.whl", hash = "sha256:39fb8672126159acb139a7718dd10806104dec1e2f0f6c88aab05d17df10c8d4"},
     {file = "urllib3-1.26.6.tar.gz", hash = "sha256:f57b4c16c62fa2760b7e3d97c35b255512fb6b59a259730f36ba32ce9f8e342f"},
 ]
-volttron-client = []
-volttron-utils = []
+volttron-client = [
+    {file = "volttron-client-0.2.0.tar.gz", hash = "sha256:012bcdf82eac89c46936149880c631187b5af35a8c29f2b96db5986efd5f05ec"},
+    {file = "volttron_client-0.2.0-py3-none-any.whl", hash = "sha256:9906be826a7aef3134e1f196b0f9c23db8573fbfca0e3ab27e49e3a65c8c52eb"},
+]
+volttron-utils = [
+    {file = "volttron-utils-0.2.1.tar.gz", hash = "sha256:0c55aab307bae6cca4285d788ad463bbffbaa1a8986e1ee23f058a040af1f4cb"},
+    {file = "volttron_utils-0.2.1-py3-none-any.whl", hash = "sha256:0527c259aea740c855230aa2470d701094ae50e6dccd13060e8106a22090ea97"},
+]
 watchdog = [
     {file = "watchdog-2.1.3-cp36-cp36m-macosx_10_9_x86_64.whl", hash = "sha256:9628f3f85375a17614a2ab5eac7665f7f7be8b6b0a2a228e6f6a2e91dd4bfe26"},
     {file = "watchdog-2.1.3-cp37-cp37m-macosx_10_9_x86_64.whl", hash = "sha256:acc4e2d5be6f140f02ee8590e51c002829e2c33ee199036fcd61311d558d89f4"},

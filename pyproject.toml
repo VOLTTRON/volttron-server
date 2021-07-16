@@ -10,12 +10,23 @@ packages = [
 
 [tool.poetry.dependencies]
 python = ">=3.6.2,<4"
-volttron-utils = { path="../volttron-utils", develop=true}
-volttron-client = { path="../volttron-client", develop = true}
+# Allows version number to be dynamically created from the
+# importlib_metadata for the wheel file.  If using python
+# 3.8 or greater this module is part of the standard library
+# as importlib.metadata.  
+#
+# See volttron/commands/__init__.py
+importlib-metadata = {version = "^1.0", python = "<3.8"}
+volttron-client = "^0.2.0"
+#volttron-utils = { path="../volttron-utils", develop=true}
+#volttron-client = { path="../volttron-client", develop = true}
 wheel = "^0.36.2"
 
 [tool.poetry.dev-dependencies]
 black = "^21.6b0"
+
+[tool.poetry.scripts]
+volttron = 'volttron.server.__main__:main'
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]

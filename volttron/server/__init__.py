@@ -10,7 +10,7 @@ except ModuleNotFoundError:
 # Try to get the version from written metadata, but
 # if failed then get it from the pyproject.toml file
 try:
-    __version__ = importlib_metadata.version(__name__)
+    __version__ = importlib_metadata.version("volttron-server")
 except importlib_metadata.PackageNotFoundError:
     # We should be in a develop environment therefore
     # we can get the version from the toml pyproject.toml
