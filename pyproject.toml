@@ -20,7 +20,7 @@ importlib-metadata = {version = "^1.0", python = "<3.8"}
 volttron-client = "^0.3.0"
 #volttron-utils = { path="../volttron-utils", develop=true}
 #volttron-client = { path="../volttron-client", develop = true}
-wheel = "^0.36.2"
+wheel = "^0.36"
 
 [tool.poetry.dev-dependencies]
 pytest = "^6.2.4"
