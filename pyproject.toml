@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "volttron-server"
-version = "0.1.1"
+version = "0.2.0"
 description = "Server component for VOLTTRON"
 authors = ["C. Allwardt <craig.allwardt@pnnl.gov>"]
 license = "Apache-2.0"

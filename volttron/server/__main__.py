@@ -36,6 +36,10 @@
 # under Contract DE-AC05-76RL01830
 # }}}
 
+from gevent import monkey
+# monkey.patch_all()
+monkey.patch_socket()
+monkey.patch_ssl()
 
 import argparse
 import errno
@@ -55,14 +59,18 @@ import threading
 import uuid
 
 import gevent
-import gevent.monkey
-
-from volttron.utils import jsonapi, ClientContext as cc
+# import gevent.monkey
+# import gevent.threading as threading
+#
+from volttron.utils import (
+    jsonapi,
+    ClientContext as cc
+)
 from volttron.utils.frame_serialization import deserialize_frames, serialize_frames
 from volttron.utils.keystore import get_random_key
 
-gevent.monkey.patch_socket()
-gevent.monkey.patch_ssl()
+#gevent.monkey.patch_socket()
+#gevent.monkey.patch_ssl()
 from gevent.fileobject import FileObject
 import zmq
 from zmq import ZMQError
@@ -127,15 +135,6 @@ try:
     HAS_WEB = True
 except ImportError:
     HAS_WEB = False
-
-try:
-    import volttron.restricted
-except ImportError:
-    HAVE_RESTRICTED = False
-else:
-    from volttron.restricted import resmon
-
-    HAVE_RESTRICTED = True
 
 from .log_actions import log_to_file, configure_logging, LogLevelAction
 from . import server_argparser as config
@@ -307,13 +306,7 @@ def start_volttron_process(opts):
                     "open file resource limit increased from %d to %d", soft, limit
                 )
         _log.debug("open file resource limit %d to %d", soft, hard)
-    # Set configuration
-    if HAVE_RESTRICTED:
-        if opts.verify_agents:
-            _log.info("Agent integrity verification enabled")
-        if opts.resource_monitor:
-            _log.info("Resource monitor enabled")
-            opts.resmon = resmon.ResourceMonitor()
+
     opts.aip = aip.AIPplatform(opts)
     opts.aip.setup()
 
@@ -496,6 +489,7 @@ def start_volttron_process(opts):
             thread.daemon = True
             thread.start()
 
+            _log.debug("After thread start!")
             gevent.sleep(0.1)
             if not thread.is_alive():
                 sys.exit()
@@ -1015,70 +1009,10 @@ def main(argv=sys.argv):
     #    '--allow-groups', action='store_list', metavar='LIST',
     #    help='user groups allowed to connect to control socket')
 
-    if HAVE_RESTRICTED:
-
-        class RestrictedAction(argparse.Action):
-            def __init__(self, option_strings, dest, const=True, help=None, **kwargs):
-                super(RestrictedAction, self).__init__(
-                    option_strings,
-                    dest=argparse.SUPPRESS,
-                    nargs=0,
-                    const=const,
-                    help=help,
-                )
-
-            def __call__(self, parser, namespace, values, option_string=None):
-                namespace.verify_agents = self.const
-                namespace.resource_monitor = self.const
-                # namespace.mobility = self.const
-
-        restrict = parser.add_argument_group("restricted options")
-        restrict.add_argument(
-            "--restricted",
-            action=RestrictedAction,
-            inverse="--no-restricted",
-            help="shortcut to enable all restricted features",
-        )
-        restrict.add_argument(
-            "--no-restricted",
-            action=RestrictedAction,
-            const=False,
-            help=argparse.SUPPRESS,
-        )
-        restrict.add_argument(
-            "--verify",
-            action="store_true",
-            inverse="--no-verify",
-            help="verify agent integrity before execution",
-        )
-        restrict.add_argument(
-            "--no-verify",
-            action="store_false",
-            dest="verify_agents",
-            help=argparse.SUPPRESS,
-        )
-        restrict.add_argument(
-            "--resource-monitor",
-            action="store_true",
-            inverse="--no-resource-monitor",
-            help="enable agent resource management",
-        )
-        restrict.add_argument(
-            "--no-resource-monitor",
-            action="store_false",
-            dest="resource_monitor",
-            help=argparse.SUPPRESS,
-        )
-        # restrict.add_argument(
-        #    '--mobility', action='store_true', inverse='--no-mobility',
-        #    help='enable agent mobility')
-        # restrict.add_argument(
-        #    '--no-mobility', action='store_false', dest='mobility',
-        #    help=argparse.SUPPRESS)
-
     ipc = "ipc://%s$VOLTTRON_HOME/run/" % (
         "@" if sys.platform.startswith("linux") else ""
     )
+
     parser.set_defaults(
         log=None,
         log_config=None,
@@ -1113,7 +1047,7 @@ def main(argv=sys.argv):
         web_ssl_cert=None,
         web_ca_cert=None,
         # If we aren't using ssl then we need a secret key available for us to use.
-        web_secret_key=None,
+        web_secret_key=None
     )
 
     # Parse and expand options
