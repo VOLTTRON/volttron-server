@@ -1,7 +1,7 @@
 {
     "_meta": {
         "hash": {
-            "sha256": "08048de4f79694316ba616a227629285f9f5d6806c6e1a39331554e2fcf28271"
+            "sha256": "9ee61ffaac6c29096f64fbf89c251b3e54d20cc343337075ee276a1f7e96b70b"
         },
         "pipfile-spec": 6,
         "requires": {
@@ -18,11 +18,11 @@
     "default": {
         "358192d": {
             "editable": true,
-            "path": "/repos/volttron-client"
+            "path": "../volttron-client"
         },
         "70c74d2": {
             "editable": true,
-            "path": "/repos/volttron-utils"
+            "path": "../volttron-utils"
         },
         "asn1crypto": {
             "hashes": [

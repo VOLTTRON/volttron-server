@@ -44,11 +44,11 @@ toml = "==0.10.2"
 urllib3 = "==1.26.7"
 
 [packages.358192d]
-path = "/repos/volttron-client"
+path = "../volttron-client"
 editable = true
 
 [packages.70c74d2]
-path = "/repos/volttron-utils"
+path = "../volttron-utils"
 editable = true
 
 [packages.e1839a8]
