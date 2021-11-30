@@ -80,8 +80,7 @@ import subprocess
 
 # Create a context common to the green and non-green zmq modules.
 green.Context._instance = green.Context.shadow(zmq.Context.instance().underlying)
-from . import aip
-from ..server import __version__
+from volttron.server import (aip, __version__)
 
 # Link to the volttron-client library
 from volttron.client.vip.agent import Agent, Core
