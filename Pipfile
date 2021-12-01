@@ -8,11 +8,10 @@ pipenv-setup = "*"
 flake8 = ">=3.9.2"
 pytest = ">=6.2.4"
 pre-commit = ">=2.14.1"
-pbr = "*"
 twine = "*"
 
 [requires]
-python_version = ">=3.7"
+python_version = "3.8.10"
 
 [packages]
 asn1crypto = "==1.4.0"
@@ -22,6 +21,7 @@ dateutils = "==0.6.12"
 gevent = "==20.6.1"
 greenlet = "==0.4.16"
 idna = "==3.3"
+pbr = "*"
 psutil = "==5.8.0"
 pycparser = "==2.21"
 pyOpenSSL = "==19.0.0"
@@ -43,14 +43,3 @@ requests = "==2.26.0"
 toml = "==0.10.2"
 urllib3 = "==1.26.7"
 
-[packages.358192d]
-path = "../volttron-client"
-editable = true
-
-[packages.70c74d2]
-path = "../volttron-utils"
-editable = true
-
-[packages.e1839a8]
-path = "."
-editable = true
