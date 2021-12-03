@@ -80,8 +80,7 @@ import subprocess
 
 # Create a context common to the green and non-green zmq modules.
 green.Context._instance = green.Context.shadow(zmq.Context.instance().underlying)
-from . import aip
-from ..server import __version__
+from volttron.server import (aip, __version__)
 
 # Link to the volttron-client library
 from volttron.client.vip.agent import Agent, Core
@@ -880,7 +879,7 @@ def main(argv=sys.argv):
     #    help='VOLTTRON configuration directory')
     parser.add_argument("--show-config", action="store_true", help=argparse.SUPPRESS)
     parser.add_help_argument()
-    parser.add_version_argument(version="%(prog)s " + __version__)
+    parser.add_version_argument(version="%(prog)s " + str(__version__))
 
     agents = parser.add_argument_group("agent options")
     agents.add_argument(

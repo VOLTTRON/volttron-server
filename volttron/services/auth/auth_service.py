@@ -42,6 +42,7 @@ __all__ = [
     "AuthEntry",
     "AuthFileEntryAlreadyExists",
     "AuthFileIndexError",
+    "AuthException"
 ]
 
 import bisect

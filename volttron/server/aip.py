@@ -44,10 +44,12 @@ import grp
 import logging
 import os
 import pwd
+import re
 import shutil
 import signal
 import sys
 import uuid
+from typing import Optional
 
 import requests
 import gevent
@@ -57,7 +59,12 @@ from gevent.subprocess import PIPE
 
 # from wheel.tool import unpack
 
-from volttron.utils import ClientContext as cc, jsonapi, get_utc_seconds_from_epoch
+from volttron.utils import (
+    ClientContext as cc,
+    jsonapi,
+    get_utc_seconds_from_epoch,
+    execute_command
+)
 from volttron.utils.certs import Certs
 from volttron.utils.identities import is_valid_identity
 from volttron.utils.keystore import KeyStore
@@ -96,28 +103,26 @@ def process_wait(p):
 
 
 # LOG_* constants from syslog module (not available on Windows)
-_level_map = {
-    7: logging.DEBUG,  # LOG_DEBUG
-    6: logging.INFO,  # LOG_INFO
-    5: logging.INFO,  # LOG_NOTICE
-    4: logging.WARNING,  # LOG_WARNING
-    3: logging.ERROR,  # LOG_ERR
-    2: logging.CRITICAL,  # LOG_CRIT
-    1: logging.CRITICAL,  # LOG_ALERT
-    0: logging.CRITICAL,
-}  # LOG_EMERG
+_level_map = {7: logging.DEBUG,  # LOG_DEBUG
+              6: logging.INFO,  # LOG_INFO
+              5: logging.INFO,  # LOG_NOTICE
+              4: logging.WARNING,  # LOG_WARNING
+              3: logging.ERROR,  # LOG_ERR
+              2: logging.CRITICAL,  # LOG_CRIT
+              1: logging.CRITICAL,  # LOG_ALERT
+              0: logging.CRITICAL, }  # LOG_EMERG
 
 
 def log_entries(name, agent, pid, level, stream):
     log = logging.getLogger(name)
-    extra = {"processName": agent, "process": pid}
+    extra = {'processName': agent, 'process': pid}
     for l in stream:
         for line in l.splitlines():
-            if line.startswith("{") and line.endswith("}"):
+            if line.startswith('{') and line.endswith('}'):
                 try:
                     obj = jsonapi.loads(line)
                     try:
-                        obj["args"] = tuple(obj["args"])
+                        obj['args'] = tuple(obj['args'])
                     except (KeyError, TypeError, ValueError):
                         pass
                     record = logging.makeLogRecord(obj)
@@ -125,9 +130,8 @@ def log_entries(name, agent, pid, level, stream):
                     pass
                 else:
                     if record.name in log.manager.loggerDict:
-                        if not logging.getLogger(record.name).isEnabledFor(
-                            record.levelno
-                        ):
+                        if not logging.getLogger(
+                                record.name).isEnabledFor(record.levelno):
                             continue
                     elif not log.isEnabledFor(record.levelno):
                         continue
@@ -135,7 +139,7 @@ def log_entries(name, agent, pid, level, stream):
                     record.__dict__.update(extra)
                     log.handle(record)
                     continue
-            if line[0:1] == "<" and line[2:3] == ">" and line[1:2].isdigit():
+            if line[0:1] == '<' and line[2:3] == '>' and line[1:2].isdigit():
                 yield _level_map.get(int(line[1]), level), line[3:]
             else:
                 yield level, line
@@ -143,8 +147,8 @@ def log_entries(name, agent, pid, level, stream):
 
 def log_stream(name, agent, pid, path, stream):
     log = logging.getLogger(name)
-    extra = {"processName": agent, "process": pid}
-    unset = {"thread": None, "threadName": None, "module": None}
+    extra = {'processName': agent, 'process': pid}
+    unset = {'thread': None, 'threadName': None, 'module': None}
     for level, line in stream:
         if log.isEnabledFor(level):
             record = logging.LogRecord(name, level, path, 0, line, [], None)
@@ -239,16 +243,15 @@ class SecureExecutionEnvironment(object):
             raise OSError(*(e.args + (args[0],)))
 
     def stop(self):
-        # TODO translate to using vctl command from volttron-commmands
-        # if self.process.poll() is None:
-        #     cmd = ["sudo", update_volttron_script_path("scripts/secure_stop_agent.sh"), self.agent_user, str(self.process.pid)]
-        #     _log.debug("In aip secureexecutionenv {}".format(cmd))
-        #     process = subprocess.Popen(cmd, stdout=PIPE, stderr=PIPE)
-        #     stdout, stderr = process.communicate()
-        #     _log.info("stopping agent: stdout {} stderr: {}".format(stdout, stderr))
-        #     if process.returncode != 0:
-        #         _log.error("Exception stopping agent: stdout {} stderr: {}".format(stdout, stderr))
-        #         raise RuntimeError("Exception stopping agent: stdout {} stderr: {}".format(stdout, stderr))
+        if self.process.poll() is None:
+            cmd = ["sudo", update_volttron_script_path("scripts/secure_stop_agent.sh"), self.agent_user, str(self.process.pid)]
+            _log.debug("In aip secureexecutionenv {}".format(cmd))
+            process = subprocess.Popen(cmd, stdout=PIPE, stderr=PIPE)
+            stdout, stderr = process.communicate()
+            _log.info("stopping agent: stdout {} stderr: {}".format(stdout, stderr))
+            if process.returncode != 0:
+                _log.error("Exception stopping agent: stdout {} stderr: {}".format(stdout, stderr))
+                raise RuntimeError("Exception stopping agent: stdout {} stderr: {}".format(stdout, stderr))
         return self.process.poll()
 
     def __call__(self, *args, **kwargs):
@@ -508,37 +511,78 @@ class AIPplatform(object):
     def install_agent(
         self, agent_wheel, vip_identity=None, publickey=None, secretkey=None
     ):
+        """
+        Install the agent into the current environment.
+
+        Installs the agent into the current environment, setup the agent data directory and
+        agent data structure.
+        """
+        cmd = ["pip", "install", agent_wheel]
+        response = execute_command(cmd)
+
+        find_success = re.match("Successfully installed (.*)", response.strip().split("\n")[-1])
+
+        if not find_success:
+            find_already_installed = re.match(f"Requirement already satisfied: (.*) from file://{agent_wheel}",
+                                              response)
+            if not find_already_installed:
+                raise ValueError(f"Couldn't install {agent_wheel}\n{response}")
+            else:
+                _log.info("Wheel already installed...")
+            agent_name = find_already_installed.groups()[0].replace("==", "-")
+        else:
+            agent_name = find_success.groups()[0]
+
+        final_identity = self._setup_agent_vip_id(
+            agent_name, vip_identity=vip_identity
+        )
 
         if self.secure_agent_user:
             _log.info("Installing secure Volttron agent...")
+
+        id_to_uuid = self.get_agent_identity_to_uuid_mapping()
+        uuid_values = id_to_uuid.values()
+
+        # After the while statement either error out or we have
+        # an agent directory with UUID file in it.
+        # agents/
+        #     agent_identity/
+        #           data/
+        #           UUID
+        #
         while True:
             agent_uuid = str(uuid.uuid4())
-            if agent_uuid in self.agents:
+            # will need this check if dynamic agents get uuid
+            # if agent_uuid in self.agents:
+            #     continue
+            if agent_uuid in uuid_values:
                 continue
-            agent_path = os.path.join(self.install_dir, agent_uuid)
+            agent_path = os.path.join(self.install_dir, final_identity)
             try:
-                os.mkdir(agent_path)
+                os.makedirs(os.path.join(agent_path, "data"))
+                with open(os.path.join(agent_path, "UUID"), "w") as f:
+                    f.write(agent_uuid)
                 break
             except OSError as exc:
-                if exc.errno != errno.EEXIST:
-                    raise
+                raise
         try:
-            if auth is not None and self.env.verify_agents:
-                unpacker = auth.VolttronPackageWheelFile(agent_wheel, certsobj=Certs())
-                unpacker.unpack(dest=agent_path)
-            # TODO: Wheel wrap
-            # else:
-            #     unpack(agent_wheel, dest=agent_path)
+            # if auth is not None and self.env.verify_agents:
+            #     unpacker = auth.VolttronPackageWheelFile(agent_wheel, certsobj=Certs())
+            #     unpacker.unpack(dest=agent_path)
+            # # TODO: Wheel wrap
+            # # else:
+            # #     unpack(agent_wheel, dest=agent_path)
+            #
+            # # Is it ok to remove the wheel file after unpacking?
+            # os.remove(agent_wheel)
+            #
+            # final_identity = self._setup_agent_vip_id(
+            #     agent_uuid, vip_identity=vip_identity
+            # )
 
-            # Is it ok to remove the wheel file after unpacking?
-            os.remove(agent_wheel)
+            keystore = self.__get_agent_keystore__(final_identity, publickey, secretkey)
 
-            final_identity = self._setup_agent_vip_id(
-                agent_uuid, vip_identity=vip_identity
-            )
-            keystore = self.get_agent_keystore(agent_uuid, publickey, secretkey)
-
-            self._authorize_agent_keys(agent_uuid, final_identity, keystore.public)
+            self._authorize_agent_keys(final_identity, keystore.public)
 
             if self.message_bus == "rmq":
                 rmq_user = cc.get_fq_identity(final_identity, cc.get_instance_name())
@@ -558,24 +602,26 @@ class AIPplatform(object):
             raise
         return agent_uuid
 
-    def _setup_agent_vip_id(self, agent_uuid, vip_identity=None):
-        agent_path = os.path.join(self.install_dir, agent_uuid)
-        name = self.agent_name(agent_uuid)
-        pkg = None
-        # TODO: wheel wrap
-        # pkg = UnpackedPackage(os.path.join(agent_path, name))
-        identity_template_filename = os.path.join(pkg.distinfo, "IDENTITY_TEMPLATE")
+    def _setup_agent_vip_id(self, agent_name, vip_identity=None):
+        # agent_path = os.path.join(self.install_dir, agent_name)
+        # name = self.agent_name(agent_name)
+        # pkg = None
+        # # TODO: wheel wrap
+        # # pkg = UnpackedPackage(os.path.join(agent_path, name))
+        # identity_template_filename = os.path.join(pkg.distinfo, "IDENTITY_TEMPLATE")
 
-        rm_id_template = False
-
-        if not os.path.exists(identity_template_filename):
-            agent_name = self.agent_name(agent_uuid)
-            name_template = agent_name + "_{n}"
-        else:
-            with open(identity_template_filename, "r") as fp:
-                name_template = fp.read(64)
-
-            rm_id_template = True
+        # rm_id_template = False
+        #
+        # if not os.path.exists(identity_template_filename):
+        #     agent_name = self.agent_name(agent_name)
+        #     name_template = agent_name + "_{n}"
+        # else:
+        #     with open(identity_template_filename, "r") as fp:
+        #         name_template = fp.read(64)
+        #
+        #     rm_id_template = True
+        #
+        name_template = agent_name + "_{n}"
 
         if vip_identity is not None:
             name_template = vip_identity
@@ -596,23 +642,29 @@ class AIPplatform(object):
                 "Invalid identity detecated: {}".format(",".format(final_identity))
             )
 
-        identity_filename = os.path.join(agent_path, "IDENTITY")
-
-        with open(identity_filename, "w") as fp:
-            fp.write(final_identity)
-
-        _log.info(
-            "Agent {uuid} setup to use VIP ID {vip_identity}".format(
-                uuid=agent_uuid, vip_identity=final_identity
-            )
-        )
-
-        # Cleanup IDENTITY_TEMPLATE file.
-        if rm_id_template:
-            os.remove(identity_template_filename)
-            _log.debug("IDENTITY_TEMPLATE file removed.")
+        # identity_filename = os.path.join(agent_path, "IDENTITY")
+        #
+        # with open(identity_filename, "w") as fp:
+        #     fp.write(final_identity)
+        #
+        # _log.info(
+        #     "Agent {uuid} setup to use VIP ID {vip_identity}".format(
+        #         uuid=agent_name, vip_identity=final_identity
+        #     )
+        # )
+        #
+        # # Cleanup IDENTITY_TEMPLATE file.
+        # if rm_id_template:
+        #     os.remove(identity_template_filename)
+        #     _log.debug("IDENTITY_TEMPLATE file removed.")
 
         return final_identity
+
+    def __get_agent_keystore__(self, vip_identity: str, encoded_public: Optional[str] = None,
+                               encoded_secret: Optional[str] = None):
+        agent_path = os.path.join(self.install_dir, vip_identity)
+        keystore_path = os.path.join(agent_path, "keystore.json")
+        return KeyStore(keystore_path, encoded_public, encoded_secret)
 
     def get_agent_keystore(self, agent_uuid, encoded_public=None, encoded_secret=None):
         agent_path = os.path.join(self.install_dir, agent_uuid)
@@ -621,7 +673,7 @@ class AIPplatform(object):
         keystore_path = os.path.join(dist_info, "keystore.json")
         return KeyStore(keystore_path, encoded_public, encoded_secret)
 
-    def _authorize_agent_keys(self, agent_uuid, identity, publickey):
+    def _authorize_agent_keys(self, identity, publickey):
         capabilities = {"edit_config_store": {"identity": identity}}
 
         if identity == VOLTTRON_CENTRAL_PLATFORM:
