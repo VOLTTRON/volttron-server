@@ -12,7 +12,7 @@ pbr = "*"
 twine = "*"
 
 [requires]
-python_version = ">=3.7"
+python_version = "3.8.10"
 
 [packages]
 asn1crypto = "==1.4.0"
@@ -43,14 +43,14 @@ requests = "==2.26.0"
 toml = "==0.10.2"
 urllib3 = "==1.26.7"
 
-[packages.358192d]
-path = "../volttron-client"
+[dev-packages.6f484ac]
+path = "./../volttron-client"
 editable = true
 
-[packages.70c74d2]
-path = "../volttron-utils"
+[dev-packages.77c214e]
+path = "./../volttron-utils"
 editable = true
 
-[packages.e1839a8]
+[dev-packages.e1839a8]
 path = "."
 editable = true
