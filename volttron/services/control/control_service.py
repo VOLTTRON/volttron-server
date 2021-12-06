@@ -568,12 +568,13 @@ class ControlService(BaseAgent):
                 )
                 _log.debug("Unsubscribing on server")
 
-            agent_uuid = self._install_wheel_to_platform(agent_uuid, vip_identity, path, publickey, secretkey)
+            agent_uuid = self._install_wheel_to_platform(agent_uuid, vip_identity, path, publickey, secretkey,
+                                                         agent_config)
             return agent_uuid
         finally:
             shutil.rmtree(tmpdir, ignore_errors=True)
 
-    def _install_wheel_to_platform(self, agent_uuid, vip_identity, path, publickey, secretkey):
+    def _install_wheel_to_platform(self, agent_uuid, vip_identity, path, publickey, secretkey, agent_config):
         old_agent_data_dir = None
         backup_agent_file = None
 
@@ -600,10 +601,7 @@ class ControlService(BaseAgent):
             )
             self.remove_agent(agent_uuid)
         _log.debug("Calling aip install_agent.")
-        agent_uuid = self._aip.install_agent(
-            path, vip_identity=vip_identity, publickey=publickey,
-            secretkey=secretkey
-        )
+        agent_uuid = self._aip.install_agent(path, vip_identity, publickey, secretkey, agent_config)
 
         if backup_agent_file is not None:
             restore_agent_data_from_tgz(
@@ -733,7 +731,8 @@ class ControlService(BaseAgent):
                 del channel
 
             _log.debug("After transferring wheel to us now to do stuff.")
-            agent_uuid = self._install_wheel_to_platform(agent_uuid, vip_identity, path, publickey, secretkey)
+            agent_uuid = self._install_wheel_to_platform(agent_uuid, vip_identity, path, publickey, secretkey,
+                                                         agent_config)
             return agent_uuid
         finally:
             shutil.rmtree(tmpdir, ignore_errors=True)
