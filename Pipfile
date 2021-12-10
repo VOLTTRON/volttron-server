@@ -42,15 +42,3 @@ grequests = "==0.6.0"
 requests = "==2.26.0"
 toml = "==0.10.2"
 urllib3 = "==1.26.7"
-
-[dev-packages.6f484ac]
-path = "./../volttron-client"
-editable = true
-
-[dev-packages.77c214e]
-path = "./../volttron-utils"
-editable = true
-
-[dev-packages.e1839a8]
-path = "."
-editable = true
