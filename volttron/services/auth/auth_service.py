@@ -340,9 +340,7 @@ class AuthService(Agent):
                 address = address.decode("utf-8")
                 kind = kind.decode("utf-8")
                 user = self.authenticate(domain, address, kind, credentials)
-                _log.info(
-                    "AUTH: After authenticate user id: {0}, {1}".format(user, userid)
-                )
+                _log.info(f"AUTH: After authenticate user id: {user}, {userid}")
                 if user:
                     _log.info(
                         "authentication success: userid=%r domain=%r, address=%r, "

@@ -437,7 +437,7 @@ class ControlService(BaseAgent):
                 "got {!r} from identity: {}".format(type(uuid).__name__,
                                                     identity)
             )
-        return self._aip.agent_identity(uuid)
+        return self._aip.uuid_vip_id_map[uuid]
 
     @RPC.export
     def get_all_agent_publickeys(self):
@@ -457,21 +457,20 @@ class ControlService(BaseAgent):
         :return: mapping of identity to agent publickey
         :rtype: dict
         """
-        id_map = self._aip.get_agent_identity_to_uuid_mapping()
-        retmap = {}
-        for id, uuid in id_map.items():
-            retmap[id] = self._aip.get_agent_keystore(uuid).public
-        return retmap
+        result = {}
+        for vip_identity in self._aip.vip_id_uuid_map:
+            result[vip_identity] = self._aip.__get_agent_keystore__(vip_identity).public
+        return result
 
     @RPC.export
     def identity_exists(self, identity):
         if not identity:
             raise ValueError("Attribute identity cannot be None or empty")
 
-        return self._identity_exists(identity)
+        return self._vip_identity_exists(identity)
 
     @RPC.export
-    def install_agent_rmq(self, vip_identity, filename, topic, force,
+    def install_agent_rmq(self, filename, topic, vip_identity, publickey, secretkey, force, agent_config,
                           response_topic):
         """
         Install the agent through the rmq message bus.
@@ -491,9 +490,7 @@ class ControlService(BaseAgent):
             protocol_headers = headers
             response_received = True
 
-        agent_uuid, agent_existed_before = self._raise_error_if_identity_exists_without_force(
-            vip_identity, force
-        )
+        agent_uuid = self._raise_error_if_identity_exists_without_force(vip_identity, force)
         try:
             tmpdir = tempfile.mkdtemp()
             path = os.path.join(tmpdir, os.path.basename(filename))
@@ -571,56 +568,45 @@ class ControlService(BaseAgent):
                 )
                 _log.debug("Unsubscribing on server")
 
-                _log.debug("After transfering wheel to us now to do stuff.")
-                agent_data_dir = None
-                backup_agent_file = None
-
-            agent_uuid = self._install_wheel_to_platform(
-                agent_uuid, vip_identity, path, agent_existed_before
-            )
+            agent_uuid = self._install_wheel_to_platform(agent_uuid, vip_identity, path, publickey, secretkey,
+                                                         agent_config)
             return agent_uuid
         finally:
             shutil.rmtree(tmpdir, ignore_errors=True)
 
-    def _install_wheel_to_platform(
-        self, agent_uuid, vip_identity, path, agent_existed_before
-    ):
-        agent_data_dir = None
+    def _install_wheel_to_platform(self, agent_uuid, vip_identity, path, publickey, secretkey, agent_config):
+        old_agent_data_dir = None
         backup_agent_file = None
-        # Fix unbound variable.  Only gets set if there is an existing agent
-        # already.
-        publickey = None
-        secretkey = None
+
         # Note if this is anything then we know we have already got an agent
         # mapped to the identity.
+        backup_agent_file = None
+
         if agent_uuid:
             _log.debug(f"There is an existing agent {agent_uuid}")
-            backup_agent_file = "/tmp/{}.tar.gz".format(agent_uuid)
-            if agent_uuid:
-                agent_data_dir = self._aip.create_agent_data_dir_if_missing(
-                    agent_uuid)
+            old_agent_data_dir = self._aip.get_agent_data_dir(
+                agent_uuid)
+            if os.listdir(old_agent_data_dir):
+                # And there is data to backup
+                backup_agent_file = "/tmp/{}.tar.gz".format(agent_uuid)
+                backup_agent_data(backup_agent_file, old_agent_data_dir)
+            # current agent's keystore overrides any keystore data passed
+            keystore = self._aip.__get_agent_keystore__(vip_identity, publickey, secretkey)
+            publickey = keystore.public
+            secretkey = keystore.secret
 
-                if agent_data_dir:
-                    backup_agent_data(backup_agent_file, agent_data_dir)
-
-                keystore = self._aip.__get_agent_keystore__(vip_identity)
-                publickey = keystore.public
-                secretkey = keystore.secret
-                _log.info(
-                    'Removing previous version of agent "{}"\n'.format(
-                        vip_identity)
-                )
-                self.remove_agent(agent_uuid)
+            _log.info(
+                'Removing previous version of agent "{}"\n'.format(
+                    vip_identity)
+            )
+            self.remove_agent(agent_uuid)
         _log.debug("Calling aip install_agent.")
-        agent_uuid = self._aip.install_agent(
-            path, vip_identity=vip_identity, publickey=publickey,
-            secretkey=secretkey
-        )
+        agent_uuid = self._aip.install_agent(path, vip_identity, publickey, secretkey, agent_config)
 
-        if agent_existed_before and backup_agent_file is not None:
+        if backup_agent_file is not None:
             restore_agent_data_from_tgz(
                 backup_agent_file,
-                self._aip.create_agent_data_dir_if_missing(agent_uuid),
+                self._aip.get_agent_data_dir(agent_uuid),
             )
         _log.debug(f"Returning {agent_uuid}")
         return agent_uuid
@@ -634,6 +620,7 @@ class ControlService(BaseAgent):
         publickey=None,
         secretkey=None,
         force=False,
+        agent_config=None
     ):
         """
         Installs an agent on the instance instance.
@@ -680,11 +667,18 @@ class ControlService(BaseAgent):
             Encoded public key the installed agent will use
         :param:string:secretkey:
             Encoded secret key the installed agent will use
+        :param:bool:force:
+            If true overwrite currently installed agent with same vip identity. defaults to false
+        :param:dict:agent_config:
+            Optional agent configuration
         """
+
+        if agent_config is None:
+            agent_config = dict()
 
         # at this point if agent_uuid is populated then there is an
         # identity of that already available.
-        agent_uuid, agent_existed_before = self._raise_error_if_identity_exists_without_force(
+        agent_uuid = self._raise_error_if_identity_exists_without_force(
             vip_identity, force
         )
         _log.debug(f"rpc: install_agent {agent_uuid}")
@@ -737,9 +731,8 @@ class ControlService(BaseAgent):
                 del channel
 
             _log.debug("After transferring wheel to us now to do stuff.")
-            agent_uuid = self._install_wheel_to_platform(
-                agent_uuid, vip_identity, path, agent_existed_before
-            )
+            agent_uuid = self._install_wheel_to_platform(agent_uuid, vip_identity, path, publickey, secretkey,
+                                                         agent_config)
             return agent_uuid
         finally:
             shutil.rmtree(tmpdir, ignore_errors=True)
@@ -756,32 +749,19 @@ class ControlService(BaseAgent):
         # identity of that already available.
         agent_uuid = None
         if vip_identity:
-            agent_uuid = self._identity_exists(vip_identity)
-        agent_existed_before = False
+            agent_uuid = self._vip_identity_exists(vip_identity)
         if agent_uuid:
-            agent_existed_before = True
             if not force:
                 raise ValueError("Identity already exists, but not forced!")
-        return agent_uuid, agent_existed_before
+        return agent_uuid
 
-    def _identity_exists(self, identity: str) -> Optional[str]:
+    def _vip_identity_exists(self, vip_identity: str) -> Optional[str]:
         """
-        Determines if an agent identity is already installed.  This
+        Determines if an agent vip identity is already installed.  If installed,
         function returns the agent uuid of the agent with the passed
-        identity.  If the identity
-        doesn't exist then returns None.
+        vip identity.  If the identity  doesn't exist then returns None.
         """
-        results = self.list_agents()
-        if not results:
-            return None
-
-        for x in results:
-            if x["identity"] == identity:
-                return x["uuid"]
-        return None
-
-
-
+        return self._aip.vip_id_uuid_map.get(vip_identity)
 
 Agent = collections.namedtuple("Agent", "name tag uuid vip_identity agent_user")
 
@@ -855,9 +835,13 @@ def restore_agent_data_from_tgz(source_file, output_dir):
         tar.extractall(output_dir)
 
 
-def find_agent_data_dir(opts, agent_uuid):
-    # Find agent-data directory path, create if missing
-    agent_data_dir = opts.aip.create_agent_data_dir_if_missing(agent_uuid)
+def get_agent_data_dir_by_uuid(opts, agent_uuid):
+    agent_data_dir = opts.aip.get_agent_data_dir(agent_uuid=agent_uuid)
+    return agent_data_dir
+
+
+def get_agent_data_dir_by_vip_id(opts, vip_identity):
+    agent_data_dir = opts.aip.get_agent_data_dir(vip_identity=vip_identity)
     return agent_data_dir
 
 #
