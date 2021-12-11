@@ -1019,38 +1019,41 @@ class AIPplatform(object):
 
         # if auth is not None and self.env.verify_agents:
         #     auth.UnpackedPackageVerifier(pkg.distinfo).verify()
-        # metadata = pkg.metadata
 
-        try:
-            import importlib_metadata
-            # TODO assume it might not be always console_scripts.
-            # TODO how to be backward compatible for entry points.
-            # agents in monolithic code would have ["setuptools.installation"]["eggsecutable"] or
-            # ["volttron.agent"]["launch"]
-            # See commented code below
-            entry_points = importlib_metadata.distribution(name_no_version).entry_points.select(group="console_scripts")
-            module = entry_points[0].module
-            fn = entry_points[0].attr
+        import importlib_metadata
+        # TODO should we support ["volttron.agent"]["launch"]
+        # agents in monolithic code would have ["setuptools.installation"]["eggsecutable"] or
+        # ["volttron.agent"]["launch"]
 
-            # below is fine if it is unique name.
-            # TODO: could check if attr=main if there are more than one console_scripts entry point
-            argv = entry_points[0].name
-            # else
-            #argv = ["python", "-c", f"from {module} import {fn}; {fn}()"]
-        except KeyError:
-            raise ValueError("no entry points exported")
+        entrypoint = None
+        entrypoints = importlib_metadata.distribution(
+            name_no_version).entry_points.select(group="console_scripts")
+        if entrypoints:
+            entrypoint = entrypoints[0]
+        else:
+            entrypoints = importlib_metadata.distribution(
+                name_no_version).entry_points.select(group="setuptools.installation")
+            for i in entrypoints:
+                if entrypoint.name == "eggsecutable":
+                    entrypoint = i
+                    break
+        if not entrypoints:
+            entrypoints = importlib_metadata.distribution(
+                name_no_version).entry_points.select(group="volttron.agent")
+            for i in entrypoints:
+                if entrypoint.name == "launch":
+                    entrypoint = i
+                    break
 
-        # try:
-        #     module = exports["volttron.agent"]["launch"]
-        # except KeyError:
-        #     try:
-        #         module = exports["setuptools.installation"]["eggsecutable"]
-        #     except KeyError:
-        #         _log.error(
-        #             "no agent launch class specified in package %s",
-        #             agent_path_with_name,
-        #         )
-        #         raise ValueError("no agent launch class specified in package")
+        if not entrypoints or not entrypoint:
+            raise ValueError("Unable to find entry point ['console_scripts'] or "
+                             "['setuptools.installation']['eggsecutable'] or "
+                             "['volttron.agent']['launch']")
+
+        module = entrypoint.module
+        fn = entrypoint.attr
+        argv = [sys.executable, "-c", f"\"from {module} import {fn}; {fn}()\""]
+
         config = os.path.join(self.install_dir, vip_identity, "config")
         tag = self.agent_tag(agent_uuid)
         environ = os.environ.copy()
