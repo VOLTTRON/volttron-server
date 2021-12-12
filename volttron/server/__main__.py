@@ -159,8 +159,8 @@ _log = logging.getLogger(
 # for log_name in log_level_info:
 #     logging.getLogger(log_name).setLevel(logging.INFO)
 
-#
-VOLTTRON_INSTANCES = str(Path("~/.volttron_instances").expanduser().resolve())
+# No need for str after python 3.8
+VOLTTRON_INSTANCES = Path("~/.volttron_instances").expanduser().resolve()
 
 
 def start_volttron_process(opts):
@@ -587,7 +587,7 @@ def start_volttron_process(opts):
 
         # The instance file is where we are going to record the instance and
         # its details according to
-        instance_file = os.path.expanduser(VOLTTRON_INSTANCES)
+        instance_file = str(VOLTTRON_INSTANCES)
         try:
             instances = load_create_store(instance_file)
         except ValueError:
@@ -776,7 +776,7 @@ def start_volttron_process(opts):
     finally:
         _log.debug("AIP finally")
         opts.aip.finish()
-        instance_file = os.path.expanduser(VOLTTRON_INSTANCES)
+        instance_file = str(VOLTTRON_INSTANCES)
         try:
             instances = load_create_store(instance_file)
             instances.pop(opts.volttron_home, None)
@@ -784,7 +784,7 @@ def start_volttron_process(opts):
             if os.path.exists(pid_file):
                 os.remove(pid_file)
         except Exception:
-            _log.warning("Unable to load {}".format(VOLTTRON_INSTANCES))
+            _log.warning(f"Unable to load {VOLTTRON_INSTANCES}")
         _log.debug(
             "********************************************************************"
         )
