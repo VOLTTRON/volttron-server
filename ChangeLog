@@ -1,6 +1,10 @@
 CHANGES
 =======
 
+v0.3.8
+------
+
+* Updated pipfile artifacts
 * Fixed versioninfo blunder for non-git installations
 * Update prepare for new version
 * Added line number to log\_to\_file format output
