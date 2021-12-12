@@ -1,6 +1,8 @@
 CHANGES
 =======
 
+* Fixed versioninfo blunder for non-git installations
+* Update prepare for new version
 * Added line number to log\_to\_file format output
 * Fixed starting of agent without double quoting. Use single word with keys
 * changed formatting to be clearer for Path

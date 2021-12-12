@@ -1,7 +1,7 @@
 {
     "_meta": {
         "hash": {
-            "sha256": "e0a989fda75aeb6fe1ec5cd803dc17a9f2ab06210a7344260a75c134d19cfea8"
+            "sha256": "0d807b6f2767f1f9b6642c82155ffac5d7d593c47661ac1b990e64f976e608ce"
         },
         "pipfile-spec": 6,
         "requires": {
@@ -202,6 +202,7 @@
                 "sha256:176e8560eaf61e127817ef93d8a844803abb27a4d4637f0ff3bb783129be2e0a",
                 "sha256:672d8ebee84921862110f23fcec2acea191ef58543d34dfe9ef3d9f13c31cddf"
             ],
+            "index": "volttron-server",
             "version": "==5.8.0"
         },
         "psutil": {
@@ -746,6 +747,7 @@
                 "sha256:1b5a0ea5c0e7b166b2f5895b91a08c14de8915afda4407fb5022a195224958ac",
                 "sha256:fa9e232dfa0c498bd0b8a3a73b8d8a31978304dcef0515adc859d4e096f96f4f"
             ],
+            "markers": "sys_platform == 'linux'",
             "version": "==0.7.1"
         },
         "keyring": {
