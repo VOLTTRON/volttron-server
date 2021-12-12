@@ -38,4 +38,4 @@
 
 from pbr.version import VersionInfo
 
-__version__ = VersionInfo("volttron.server")
+__version__ = VersionInfo("volttron-server")
