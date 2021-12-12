@@ -1,0 +1,35 @@
+CHANGES
+=======
+
+* Added line number to log\_to\_file format output
+* Fixed starting of agent without double quoting. Use single word with keys
+* changed formatting to be clearer for Path
+
+v0.3.7
+------
+
+* Standardize setup.cfg to start at python 3.8
+* Standardize github actions across core repositories
+* fix for handling different entry points to make porting agents from monolithic code easier
+* removed local entries of volttron-client and volttron-utils
+* vctl fixes for - install agent from wheel, dir. - start agent - stop agent - remove agent
+* minor changes to add install with config
+* More changes vctl install - can now install from wheel or directory. todo- handle config file
+* Use pbr to grab the version info from the modules
+* VOLTTRON installs using pip and channels correctly and builds the data directory
+* Use relative path for development
+* Updated to use pipenv and pyproject file
+* Fixed issue with multiple patching of gevent monkey
+* Only test against 1.1.6 poetry
+
+v0.1.1
+------
+
+* Added .gitattributes
+* version of wheel
+* Updated to new version of client. Added functionality to push volttron-server to pypi
+* working version of server
+* Created initial volttron.server package
+* Temporary transfer to files
+* Temporary commit
+* Added beginning of the start of volttron-server with plugins available
