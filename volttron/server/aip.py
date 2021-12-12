@@ -1052,7 +1052,7 @@ class AIPplatform(object):
 
         module = entrypoint.module
         fn = entrypoint.attr
-        argv = [sys.executable, "-c", f"\"from {module} import {fn}; {fn}()\""]
+        argv = [sys.executable, "-c", f"from {module} import {fn}; {fn}()"]
 
         config = os.path.join(self.install_dir, vip_identity, "config")
         tag = self.agent_tag(agent_uuid)
@@ -1075,10 +1075,10 @@ class AIPplatform(object):
         environ["_LAUNCHED_BY_PLATFORM"] = "1"
 
         environ["AGENT_VIP_IDENTITY"] = vip_identity
-        environ["VOLTTRON_SERVER_KEY"] = KeyStore().public
+        environ["VOLTTRON_SERVERKEY"] = KeyStore().public
         keystore_path = os.path.join(cc.get_volttron_home(), "agents", vip_identity, "keystore.json")
         keystore = KeyStore(keystore_path)
-        environ["AGENT_PUBLIC_KEY"], environ["AGENT_SECRET_KEY"] = keystore.public, keystore.secret
+        environ["AGENT_PUBLICKEY"], environ["AGENT_SECRETKEY"] = keystore.public, keystore.secret
 
         #module, _, func = module.partition(":")
         # if func:
@@ -1087,7 +1087,6 @@ class AIPplatform(object):
         #     argv = [sys.executable, '-c', code]
         # else:
         # argv = [sys.executable, "-m", module]
-        resmon = getattr(self.env, "resmon", None)
         agent_user = None
 
         if self.secure_agent_user:
@@ -1146,21 +1145,16 @@ class AIPplatform(object):
                 # give read access to user to its own private key file.
                 self.set_acl_for_path("r", agent_user, key_file)
 
-        if resmon is None:
-            if agent_user:
-                execenv = SecureExecutionEnvironment(agent_user=agent_user)
-            else:
-                execenv = ExecutionEnvironment()
+        if agent_user:
+            execenv = SecureExecutionEnvironment(agent_user=agent_user)
         else:
-            execreqs = self._read_execreqs(pkg.distinfo)
-            execenv = self._reserve_resources(resmon, execreqs, agent_user=agent_user)
+            execenv = ExecutionEnvironment()
+
         execenv.name = name
         _log.info("starting agent %s", name)
-        # data_dir = self._get_agent_data_dir(agent_path_with_name)
         _log.info("starting agent using {} ".format(type(execenv)))
         execenv.execute(
             argv,
-           # cwd=agent_path_with_name,
             env=environ,
             close_fds=True,
             stdin=open(os.devnull),
@@ -1193,7 +1187,7 @@ class AIPplatform(object):
         execenv = self.active_agents.get(agent_uuid)
         if execenv is None:
             return (None, None)
-        return (execenv.process.pid, execenv.process.poll())
+        return execenv.process.pid, execenv.process.poll()
 
     def stop_agent(self, agent_uuid):
         try:
