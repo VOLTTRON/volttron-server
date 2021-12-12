@@ -10,7 +10,7 @@ def log_to_file(file_, level=logging.WARNING, handler_class=logging.StreamHandle
     """
     handler = handler_class(file_)
     handler.setLevel(level)
-    handler.setFormatter(AgentFormatter())
+    handler.setFormatter(AgentFormatter(fmt="%(asctime)s %(composite_name)s(%(lineno)d) %(levelname)s: %(message)s"))
     root = logging.getLogger()
     if root.level < level:
         root.setLevel(level)
