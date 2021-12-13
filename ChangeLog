@@ -1,6 +1,13 @@
 CHANGES
 =======
 
+* Fixed issue with installation of eggsecutable
+
+v0.3.9
+------
+
+* Added requirements.txt
+
 v0.3.8
 ------
 
