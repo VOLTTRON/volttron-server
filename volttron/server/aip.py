@@ -1016,10 +1016,6 @@ class AIPplatform(object):
             )
             raise ValueError("agent is already running")
 
-
-        # if auth is not None and self.env.verify_agents:
-        #     auth.UnpackedPackageVerifier(pkg.distinfo).verify()
-
         import importlib_metadata
         # TODO should we support ["volttron.agent"]["launch"]
         # agents in monolithic code would have ["setuptools.installation"]["eggsecutable"] or
@@ -1034,9 +1030,10 @@ class AIPplatform(object):
             entrypoints = importlib_metadata.distribution(
                 name_no_version).entry_points.select(group="setuptools.installation")
             for i in entrypoints:
-                if entrypoint.name == "eggsecutable":
+                if entrypoint == "eggsecutable":
                     entrypoint = i
                     break
+
         if not entrypoints:
             entrypoints = importlib_metadata.distribution(
                 name_no_version).entry_points.select(group="volttron.agent")
