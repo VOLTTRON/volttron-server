@@ -1,6 +1,12 @@
 CHANGES
 =======
 
+* Fixed starting of agent issue with aip
+
+v0.3.10
+-------
+
+* Fixed reference files for variables in setup.cfg file
 * Fixed issue with installation of eggsecutable
 
 v0.3.9
