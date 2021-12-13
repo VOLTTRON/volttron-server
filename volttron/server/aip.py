@@ -1029,17 +1029,15 @@ class AIPplatform(object):
         else:
             entrypoints = importlib_metadata.distribution(
                 name_no_version).entry_points.select(group="setuptools.installation")
-            for i in entrypoints:
-                if entrypoint == "eggsecutable":
-                    entrypoint = i
+            for entrypoint in entrypoints:
+                if entrypoint.name == "eggsecutable":
                     break
 
         if not entrypoints:
             entrypoints = importlib_metadata.distribution(
                 name_no_version).entry_points.select(group="volttron.agent")
-            for i in entrypoints:
+            for entrypoint in entrypoints:
                 if entrypoint.name == "launch":
-                    entrypoint = i
                     break
 
         if not entrypoints or not entrypoint:
