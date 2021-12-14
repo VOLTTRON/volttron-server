@@ -25,6 +25,7 @@ volttron-client==0.3.8
 volttron-utils==0.3.4
 watchdog-gevent==0.1.1
 watchdog==2.1.6
+wheel==0.37.0
 zipp==3.6.0
 zmq==0.0.0
 zope.event==4.5.0
