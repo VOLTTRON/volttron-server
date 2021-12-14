@@ -1,6 +1,13 @@
 CHANGES
 =======
 
+* Updated Pipfile to add wheel as dependency
+* Update requirements.txt
+
+v0.3.11
+-------
+
+* updated changelog
 * Fixed starting of agent issue with aip
 
 v0.3.10
